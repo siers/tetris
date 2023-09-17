@@ -1,27 +1,26 @@
-# tetris [![Build Status](https://github.com/samtay/tetris/actions/workflows/ci.yml/badge.svg)](https://github.com/samtay/tetris/actions/workflows/ci.yml)
+# tetris solver
 
-A terminal interface for Tetris
+A tetris solver on top of [samtay/tetris](https://github.com/samtay/tetris/).
+It got me a `1_000_000` score until I was no longer interested in waiting.
 
-![terminal-gif](./docs/img/play.gif)
+Bruteforces all two next moves with the scoring function that
+
+* penalizes each occupied block on the screen
+* penalizes each free block with occupied blocks above it.
+* weighs each block according to its height in the game (high is bad)
+* scores by (scoreAfterTwoMoves, scoreAfterFirstMove), which is important
+
+See more: [siers/tetris/blob/solver/src/Solve.hs](https://github.com/siers/tetris/blob/solver/src/Solve.hs).
+
+<p align="center">
+  <img width="600" src="/docs/img/solve.svg">
+</p>
 
 ## installation
-Installation on MacOS and Linux is outlined below. Windows support is questionable, but you can try to install from [source](#install-from-source).
 
-#### MacOS
-Installation on a Mac is simple with Homebrew:
+#### Nix
 ```bash
-brew install samtay/tui/tetris
-```
-#### Arch Linux
-Arch Linux users can install from the [AUR](https://aur.archlinux.org/packages/tetris-terminal-git/), e.g.
-```bash
-yay -S tetris-terminal-git # or yaourt, etc.
-```
-#### Snapcraft
-Thanks to **@thefenriswolf** this is available on most Linux distributions via [snapcraft](https://snapcraft.io/tetris-thefenriswolf):
-```bash
-sudo snap install tetris-thefenriswolf
-alias tetris=/snap/bin/tetris-thefenriswolf.tetris # add to .bashrc or .zshrc etc.
+nix shell --run 'cabal run tetris'
 ```
 #### install from source
 First [get stack](https://docs.haskellstack.org/en/stable/README/#how-to-install). Then

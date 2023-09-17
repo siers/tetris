@@ -8,32 +8,46 @@ module Tetris
     initGame
   , timeStep
   , shift
-  , rotate
   , hardDrop
+  , rotate
+  , rotateBlock
+  , rotateBlockRaw
+  , clearFullRows
+  , freezeBlock
+  , initNextBlock
   -- Game state handlers
   , execTetris
   , evalTetris
+  , runTetris
   -- Game state queries
   , isGameOver
+  , isFree
+  , isValidBlockPosition
   , hardDroppedBlock
   , coords
   -- Types
   , Block(..)
   , Coord
   , Direction(..)
-  , RotationalDirection(..)
+  , BlockRotation(..)
   , Game(..)
   , Tetrimino(..)
+  , Translatable(..)
+  , Board
   , Tetris
+  , TetrisT
+  , TetrisIO
   -- Lenses
-  , block, board, level, nextShape, score, shape
+  , block, board, level, nextShape, score, shape, perf
   -- Constants
   , boardHeight, boardWidth, relCells
+  -- Utils
+  , shuffle
   ) where
 
 import Prelude hiding (Left, Right)
 import Control.Applicative ((<|>))
-import Control.Monad (forM_, mfilter, when, (<=<))
+import Control.Monad (mfilter, when, (<=<))
 import Control.Monad.IO.Class (MonadIO(..), liftIO)
 
 import Control.Monad.Trans.State (StateT(..), gets, evalStateT, execStateT)
@@ -41,9 +55,8 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Sequence (Seq(..), (><))
 import qualified Data.Sequence as Seq
-import Control.Lens hiding (Empty)
+import Control.Lens hiding (Empty, (:<))
 import Linear.V2 (V2(..), _y)
-import qualified Linear.V2 as LV
 import System.Random (getStdRandom, randomR)
 -- Types and instances
 
@@ -66,8 +79,8 @@ makeLenses ''Block
 data Direction = Left | Right | Down
   deriving (Eq, Show)
 
-data RotationalDirection = Clockwise | Counterclockwise
-  deriving (Eq, Show)
+data BlockRotation = BrRot0 | BrRot90 | BrRot180 | BrRot270
+  deriving (Eq, Show, Enum)
 
 -- | Board
 --
@@ -84,17 +97,22 @@ data Game = Game
   , _rowClears    :: Seq.Seq Int
   , _score        :: Int
   , _board        :: Board
+  , _perf         :: Int -- solver's performance score
   } deriving (Eq, Show)
 makeLenses ''Game
 
 type TetrisT = StateT Game
 type Tetris a = forall m. (Monad m) => TetrisT m a
+type TetrisIO a = forall m. (MonadIO m) => TetrisT m a
 
 evalTetris :: Tetris a -> Game -> a
 evalTetris m = runIdentity . evalStateT m
 
 execTetris :: Tetris a -> Game -> Game
 execTetris m = runIdentity . execStateT m
+
+runTetris :: Tetris a -> Game -> (a, Game)
+runTetris m = runIdentity . runStateT m
 
 -- Translate class for direct translations, without concern for boundaries
 -- 'shift' concerns safe translations with boundaries
@@ -119,13 +137,13 @@ initBlock :: Tetrimino -> Block
 initBlock t = Block t startOrigin . fmap (+ startOrigin) . relCells $ t
 
 relCells :: Tetrimino -> [Coord]
-relCells I = map v2 [(-2, 0), (-1, 0), (1, 0)]
-relCells O = map v2 [(-1, 0), (-1, -1), (0, -1)]
-relCells S = map v2 [(-1, -1), (0, -1), (1, 0)]
-relCells Z = map v2 [(-1, 0), (0, -1), (1, -1)]
-relCells L = map v2 [(-1, -1), (-1, 0), (1, 0)]
-relCells J = map v2 [(-1, 0), (1, 0), (1, -1)]
-relCells T = map v2 [(-1, 0), (0, -1), (1, 0)]
+relCells I = map (uncurry V2) [(-2, 0), (-1, 0), (1, 0)]
+relCells O = map (uncurry V2) [(-1, 0), (-1, -1), (0, -1)]
+relCells S = map (uncurry V2) [(-1, -1), (0, -1), (1, 0)]
+relCells Z = map (uncurry V2) [(-1, 0), (0, -1), (1, -1)]
+relCells L = map (uncurry V2) [(-1, -1), (-1, 0), (1, 0)]
+relCells J = map (uncurry V2) [(-1, 0), (1, 0), (1, -1)]
+relCells T = map (uncurry V2) [(-1, 0), (0, -1), (1, 0)]
 
 -- | Visible, active board size
 boardWidth, boardHeight :: Int
@@ -139,19 +157,19 @@ startOrigin = V2 6 22
 -- | Rotate the block clockwise (or counter-) around origin
 -- *Note*: Strict unsafe rotation not respecting boundaries
 -- Safety can only be assured within Game context
-rotateRaw :: RotationalDirection -> Block -> Block
-rotateRaw rd b@(Block s o@(V2 xo yo) cs)
-  | -- O doesn't need rotation
-    s == O                             = b
-  | -- I only has two orientations
-    s == I && V2 xo (yo + 1) `elem` cs = rotateWith (direction Counterclockwise)
-  | s == I                             = rotateWith (direction Clockwise)
-  | otherwise                          = rotateWith (direction rd)
+rotateBlockRaw :: BlockRotation -> Block -> Block
+rotateBlockRaw br b@(Block s o@(V2 xo yo) cs)
+  | s == O                             = b
+  | s == I && br == BrRot0             = b
+  | s == I && V2 xo (yo + 1) `elem` cs = rotateWith BrRot270
+  | s == I                             = rotateWith BrRot90
+  | otherwise                          = rotateWith br
  where
-  direction Clockwise = (+ o) . cwperp . subtract o
-  direction Counterclockwise = (+ o) . LV.perp . subtract o
-  rotateWith dir = b & extra %~ fmap dir
-  cwperp (V2 x y) = V2 y (-x)
+  rotate BrRot0 v = v
+  rotate BrRot90 (V2 x y) = V2 y (-x)
+  rotate BrRot180 (V2 x y) = V2 (-x) (-y)
+  rotate BrRot270 (V2 x y) = V2 (-y) x
+  rotateWith br = b & extra %~ fmap ((+ o) . rotate br . subtract o)
 
 -- | Get coordinates of entire block
 coords :: Block -> [Coord]
@@ -180,6 +198,7 @@ initGame lvl = do
     , _score        = 0
     , _rowClears    = mempty
     , _board        = mempty
+    , _perf         = 0
     }
 
 isGameOver :: Game -> Bool
@@ -195,11 +214,12 @@ timeStep = do
       n <- clearFullRows
       addToRowClears n
       updateScore
+      updatePerf
       nextBlock
 
 -- | Gravitate current block, i.e. shift down
 gravitate :: Tetris ()
-gravitate = shift Down
+gravitate = shift 1 Down
 
 -- | If necessary: clear full rows and return the count
 clearFullRows :: Tetris Int
@@ -243,20 +263,24 @@ updateScore = do
     latestOrZero Empty     = 0
     latestOrZero (_ :|> n) = n
 
+updatePerf :: Tetris ()
+updatePerf = do
+  (perf .=) . M.size =<< use board
+
 -- | Allows wallkicks: http://tetris.wikia.com/wiki/TGM_rotation
-rotate :: RotationalDirection -> Tetris ()
-rotate rd = do
-  blk <- use block
-  brd <- use board
-  let mblk = foldr (<|>) Nothing
-        $   mfilter (isValidBlockPosition brd)
-        .   pure
-        .   ($ blk)
-        <$> [ rotateRaw rd
-            , rotateRaw rd . translate Left
-            , rotateRaw rd . translate Right
-            ]
-  forM_ mblk $ assign block
+rotateBlock :: BlockRotation -> Board -> Block -> Maybe Block
+rotateBlock br brd blk = do
+  foldr (<|>) Nothing $
+    mfilter (isValidBlockPosition brd) . pure . ($ blk) <$>
+      [ rotateBlockRaw br
+      , rotateBlockRaw br . translate Left
+      , rotateBlockRaw br . translate Right
+      ]
+
+rotate :: BlockRotation -> Tetris ()
+rotate br = do
+  (brd, blk) <- (,) <$> use board <*> use block
+  mapM_ (assign block) (rotateBlock br brd blk)
 
 blockStopped :: Game -> Bool
 blockStopped g = isStopped (g ^. board) (g ^. block)
@@ -292,21 +316,24 @@ freezeBlock = do
   blk <- use block
   modifying board $ M.union $ M.fromList [ (c, _shape blk) | c <- coords blk ]
 
+initNextBlock :: Tetris ()
+initNextBlock = use nextShape >>= \s -> block .= initBlock s
+
 -- | Replace block with next block
 nextBlock :: MonadIO m => TetrisT m ()
 nextBlock = do
+  initNextBlock
   bag <- use nextShapeBag
   (t, ts) <- liftIO $ bagFourTetriminoEach bag
-  use nextShape >>= \s -> block .= initBlock s
   nextShape .= t
   nextShapeBag .= ts
 
 -- | Try to shift current block; if shifting not possible, leave block where it is
-shift :: Direction -> Tetris ()
-shift dir = do
+shift :: Int -> Direction -> Tetris ()
+shift amount dir = do
   brd <- use board
   blk <- use block
-  let candidate = translate dir blk
+  let candidate = translateBy amount dir blk
   when (isValidBlockPosition brd candidate) $
     block .= candidate
 
@@ -334,6 +361,3 @@ shuffle xs
     case Seq.splitAt randomPosition xs of
       (left, y :<| ys) ->  fmap (y <|) (shuffle $ left >< ys)
       _ -> error "impossible"
-
-v2 :: (a, a) -> V2 a
-v2 (x, y) = V2 x y

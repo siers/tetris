@@ -24,12 +24,15 @@ import qualified Data.Map as M
 import Linear.V2 (V2(..))
 
 import Tetris
+import Solve ( pickMove )
+import Scorer ( solve )
 
 data UI = UI
   { _game    :: Game         -- ^ tetris game
   , _preview :: Maybe String -- ^ hard drop preview cell
   , _locked  :: Bool         -- ^ lock after hard drop before time step
   , _paused  :: Bool         -- ^ game paused
+  , _autosolve :: Bool       -- ^ auto solve
   }
 
 makeLenses ''UI
@@ -73,6 +76,7 @@ playGame lvl mp = do
     , _preview = mp
     , _locked  = False
     , _paused  = False
+    , _autosolve = False
     }
   return $ ui ^. game
 
@@ -83,23 +87,25 @@ levelToDelay n = floor $ 400000 * (0.85 :: Double) ^ (2 * n)
 
 handleEvent :: BrickEvent Name Tick -> EventM Name UI ()
 handleEvent (AppEvent Tick                      ) = handleTick
-handleEvent (VtyEvent (V.EvKey V.KRight      [])) = exec (shift Right)
-handleEvent (VtyEvent (V.EvKey V.KLeft       [])) = exec (shift Left)
-handleEvent (VtyEvent (V.EvKey V.KDown       [])) = exec (shift Down)
-handleEvent (VtyEvent (V.EvKey (V.KChar 'l') [])) = exec (shift Right)
-handleEvent (VtyEvent (V.EvKey (V.KChar 'h') [])) = exec (shift Left)
-handleEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = exec (shift Down)
-handleEvent (VtyEvent (V.EvKey V.KUp         [])) = exec (rotate Clockwise)
-handleEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = exec (rotate Clockwise)
-handleEvent (VtyEvent (V.EvKey (V.KChar 'g') [])) = exec (rotate Counterclockwise)
+handleEvent (VtyEvent (V.EvKey V.KRight      [])) = exec (shift 1 Right)
+handleEvent (VtyEvent (V.EvKey V.KLeft       [])) = exec (shift 1 Left)
+handleEvent (VtyEvent (V.EvKey V.KDown       [])) = exec (shift 1 Down)
+handleEvent (VtyEvent (V.EvKey (V.KChar 'l') [])) = exec (shift 1 Right)
+handleEvent (VtyEvent (V.EvKey (V.KChar 'h') [])) = exec (shift 1 Left)
+handleEvent (VtyEvent (V.EvKey (V.KChar 'j') [])) = exec (shift 1 Down)
+handleEvent (VtyEvent (V.EvKey V.KUp         [])) = exec (rotate BrRot90)
+handleEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = exec (rotate BrRot90)
+handleEvent (VtyEvent (V.EvKey (V.KChar 'g') [])) = exec (rotate BrRot270)
 handleEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) =
-  guarded
-    (not . view paused)
-    (over game (execTetris hardDrop) . set locked True)
+  guarded (not . view paused) $ over game (execTetris hardDrop) . set locked True
+handleEvent (VtyEvent (V.EvKey (V.KChar 'd') [])) = do -- suggest + hard Drop
+  guarded' (not . view paused) $ (game .=) =<< execStateT suggest =<< gets (view game)
+  where
+    suggest = pickMove >> hardDrop >> timeStep >> pickMove
 handleEvent (VtyEvent (V.EvKey (V.KChar 'p') [])) =
-  guarded
-    (not . view locked)
-    (over paused not)
+  guarded (not . view locked) $ paused %~ not
+handleEvent (VtyEvent (V.EvKey (V.KChar 's') [])) = -- Solve
+  guarded (not . view locked) $ autosolve %~ not
 handleEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = restart
 handleEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
 handleEvent (VtyEvent (V.EvKey V.KEsc        [])) = halt
@@ -123,14 +129,20 @@ guarded p f = do
     modify f
 
 -- | Handles time steps, does nothing if game is over or paused
+guarded' :: (UI -> Bool) -> EventM Name UI () -> EventM Name UI ()
+guarded' p f = do
+  ui <- get
+  when (p ui && not (ui ^. game . to isGameOver)) f
+
+-- | Handles time steps, does nothing if game is over or paused
 handleTick :: EventM Name UI ()
 handleTick = do
   ui <- get
   unless (ui ^. paused || ui ^. game . to isGameOver) $ do
     -- awkward, should just mutate the inner state
     --zoom game timeStep
-    g' <- execStateT timeStep $ ui ^. game
-    game .= g'
+    let maybeSolve = if ui ^. autosolve then liftIO . solve (Just 5) pickMove else pure
+    (game .=) =<< maybeSolve =<< execStateT timeStep (ui ^. game)
     locked .= False
 
 -- | Restart game at the same level
@@ -157,7 +169,7 @@ drawGrid ui =
   hLimit 22
     $ withBorderStyle BS.unicodeBold
     $ B.borderWithLabel (str "Tetris")
-    $ case ui ^. paused of
+    $ case (ui ^. paused) of
         True  -> C.center $ str "Paused"
         False -> vBox $ [boardHeight, boardHeight - 1 .. 1] <&> \r ->
           foldr (<+>) emptyWidget
@@ -257,7 +269,6 @@ drawHelp :: Widget Name
 drawHelp =
   withBorderStyle BS.unicodeBold
     $ B.borderWithLabel (str "Help")
-    $ padTopBottom 1
     $ vBox
     $ map (uncurry drawKeyInfo)
       [ ("Left"   , "h, ←")
@@ -266,6 +277,8 @@ drawHelp =
       , ("RotateR", "k, ↑")
       , ("RotateL", "g")
       , ("Drop"   , "space")
+      , ("Suggest", "d")
+      , ("Solve"  , "s")
       , ("Restart", "r")
       , ("Pause"  , "p")
       , ("Quit"   , "q")

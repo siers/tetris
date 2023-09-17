@@ -9,6 +9,7 @@ import qualified System.Directory as D
 import System.FilePath ((</>))
 
 import Tetris (Game(..))
+import Scorer
 import UI.PickLevel (pickLevel)
 import UI.Game (playGame)
 
@@ -16,6 +17,7 @@ data Opts = Opts
   { hardDrop :: HardDropOpt
   , level    :: Maybe Int
   , score    :: Bool
+  , solver   :: Bool
   }
 
 data HardDropOpt = None | AsciiOnly | CustomChars String
@@ -31,6 +33,9 @@ opts = Opts
   <*> switch
     (  long "high-score"
     <> help "Print high score and exit" )
+  <*> switch
+    (  long "solver"
+    <> help "Print solver scores and exit" )
 
 hardDropOpt :: Parser HardDropOpt
 hardDropOpt = noneOpt <|> asciiOpt <|> custOpt
@@ -70,8 +75,9 @@ hdOptStr (CustomChars s) = Just s
 
 main :: IO ()
 main = do
-  (Opts hd ml hs) <- execParser fullopts           -- get CLI opts/args
+  (Opts hd ml hs slvr) <- execParser fullopts      -- get CLI opts/args
   when hs (getHighScore >>= printM >> exitSuccess) -- show high score and exit
+  when slvr (solveScores >> exitSuccess)
   l <- maybe pickLevel return ml                   -- pick level prompt if necessary
   g <- playGame l (hdOptStr hd)                    -- play game
   handleEndGame (_score g)                         -- save & print score
