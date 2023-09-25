@@ -5,7 +5,7 @@ with nixpkgs;
 let
   drv = pkgs.haskellPackages.callPackage ({ mkDerivation, base, brick, containers, directory, filepath
       , lens, lib, linear, optparse-applicative, random, transformers
-      , vty, mtl, async, criterion
+      , vty, mtl, async, criterion, hspec, hspec-discover, QuickCheck
       }:
       mkDerivation {
         pname = "tetris";
@@ -14,7 +14,7 @@ let
         isLibrary = true;
         isExecutable = true;
         libraryHaskellDepends = [
-          base brick containers lens linear random transformers vty mtl async criterion
+          base brick containers lens linear random transformers vty mtl async criterion hspec hspec-discover QuickCheck
         ];
         executableHaskellDepends = [
           base directory filepath optparse-applicative

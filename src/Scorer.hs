@@ -7,15 +7,17 @@ module Scorer where
 import Control.Concurrent.Async
 import Control.Lens hiding (Empty, (:<))
 import Control.Monad
-import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State (execStateT)
 import Criterion.Main
 import Data.Function (on)
-import Data.List (find, sort)
+import Data.List
 import qualified Data.Map as M
 import Data.Maybe
 import System.Environment (getEnvironment, withArgs)
+import System.Random
 import Prelude hiding (Left, Right)
+
+-- import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import qualified Solve as S
 import qualified Solve1 as S1
@@ -25,17 +27,20 @@ import qualified Tetris as T
 
 type SolverScores = (Int, [(Int, Double)])
 
+-- dbg :: MonadIO m => Game -> m ()
+-- dbg g = liftIO (putStrLn ("score: " ++ show (view score g)))
+
 solve :: Maybe Int -> TetrisIO () -> Game -> IO Game
 solve stepGuard solver g =
   if isGameOver g || any (< 1) stepGuard
     then return g
     else do
-      when (isJust (find (\x -> x `mod` 71 == 0) stepGuard)) $ liftIO (putStrLn ("score: " ++ show (view score g)))
+      -- when (isJust (find (\x -> x `mod` 71 == 0) stepGuard)) (dbg g)
       execStateT (solver >> hardDrop >> timeStep) g >>= solve (subtract 1 <$> stepGuard) solver
 
 scoreSolver :: Maybe Int -> TetrisIO () -> IO SolverScores
 scoreSolver steps solver = do
-  scores <- sort . map calcPerf <$> replicateConcurrently 4 (solve steps solver =<< initGame 0)
+  scores <- sort . map calcPerf <$> replicateConcurrently 4 (solve steps solver =<< initGame 0 (Just (mkStdGen 0)))
   return (sum (map fst scores), scores)
  where
   divToFloat = (/) `on` (fromIntegral :: Int -> Double)
@@ -58,9 +63,11 @@ solvers =
 solveScores :: IO ()
 solveScores = do
   envs <- M.fromList <$> getEnvironment
-  let iterations = read <$> M.lookup "iter" envs
+  let
+    iterations = read <$> M.lookup "iter" envs
+    criterion = M.lookup "criterion" envs
 
-  case M.lookup "criterion" envs of
+  case criterion of
     Just opts ->
       withArgs (words opts) $
         defaultMainWith defaultConfig . pure . bgroup "tetris" $

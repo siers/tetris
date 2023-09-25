@@ -68,7 +68,7 @@ playGame lvl mp = do
   void . forkIO $ forever $ do
     writeBChan chan Tick
     threadDelay delay
-  initialGame <- initGame lvl
+  initialGame <- initGame lvl Nothing
   let builder = V.mkVty V.defaultConfig
   initialVty <- builder
   ui <- customMain initialVty builder (Just chan) app $ UI
@@ -101,7 +101,7 @@ handleEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) =
 handleEvent (VtyEvent (V.EvKey (V.KChar 'd') [])) = do -- suggest + hard Drop
   guarded' (not . view paused) $ (game .=) =<< execStateT suggest =<< gets (view game)
   where
-    suggest = pickMove >> hardDrop >> timeStep >> pickMove
+    suggest = pickMove -- >> hardDrop >> timeStep >> pickMove
 handleEvent (VtyEvent (V.EvKey (V.KChar 'p') [])) =
   guarded (not . view locked) $ paused %~ not
 handleEvent (VtyEvent (V.EvKey (V.KChar 's') [])) = -- Solve
@@ -141,15 +141,15 @@ handleTick = do
   unless (ui ^. paused || ui ^. game . to isGameOver) $ do
     -- awkward, should just mutate the inner state
     --zoom game timeStep
-    let maybeSolve = if ui ^. autosolve then liftIO . solve (Just 5) pickMove else pure
+    let maybeSolve = if ui ^. autosolve then liftIO . fmap (execTetris pickMove) . solve (Just 5) pickMove else pure
     (game .=) =<< maybeSolve =<< execStateT timeStep (ui ^. game)
     locked .= False
 
 -- | Restart game at the same level
 restart :: EventM Name UI ()
 restart = do
-  lvl <- use $ game . level
-  g <- liftIO $ initGame lvl
+  (lvl, rnd) <- (,) <$> use (game . level) <*> use (game . rnd)
+  g <- liftIO $ initGame lvl (Just rnd)
   game .= g
   locked .= False
 
@@ -169,19 +169,19 @@ drawGrid ui =
   hLimit 22
     $ withBorderStyle BS.unicodeBold
     $ B.borderWithLabel (str "Tetris")
-    $ case (ui ^. paused) of
-        True  -> C.center $ str "Paused"
-        False -> vBox $ [boardHeight, boardHeight - 1 .. 1] <&> \r ->
-          foldr (<+>) emptyWidget
-            . M.filterWithKey (\(V2 _ y) _ -> r == y)
-            $ mconcat
-                [ drawBlockCell NormalBlock <$> ui ^. (game . board)
-                , blockMap NormalBlock (ui ^. (game . block))
-                , case ui ^. preview of
-                    Nothing -> M.empty
-                    Just s  -> blockMap (HardDropBlock s) (evalTetris hardDroppedBlock (ui ^. game))
-                , emptyCellMap
-                ]
+    $ if ui ^. paused
+      then C.center $ str "Paused"
+      else vBox $ [boardHeight, boardHeight - 1 .. 1] <&> \r ->
+        foldr (<+>) emptyWidget
+          . M.filterWithKey (\(V2 _ y) _ -> r == y)
+          $ mconcat
+              [ drawBlockCell NormalBlock <$> ui ^. (game . board)
+              , blockMap NormalBlock (ui ^. (game . block))
+              , case ui ^. preview of
+                  Nothing -> M.empty
+                  Just s  -> blockMap (HardDropBlock s) (evalTetris hardDroppedBlock (ui ^. game))
+              , emptyCellMap
+              ]
  where
   blockMap v b =
     M.fromList $ [ (c, drawBlockCell v (b ^. shape)) | c <- coords b ]

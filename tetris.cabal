@@ -34,6 +34,21 @@ library
   default-language:    Haskell2010
   ghc-options:         -Wall -fwarn-unused-imports -Wincomplete-patterns -fno-warn-name-shadowing
 
+test-suite spec
+  type: exitcode-stdio-1.0
+  main-is: Spec.hs
+  other-modules:
+    TetrisSpec
+  hs-source-dirs: test
+  ghc-options: -Wall -fno-warn-orphans
+  build-depends:
+      base
+    , hspec
+    , hspec-discover
+    , tetris
+    , QuickCheck
+  default-language: Haskell2010
+
 executable tetris
   hs-source-dirs:      app
   main-is:             Main.hs

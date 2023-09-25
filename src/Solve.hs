@@ -19,7 +19,7 @@ type Score = Int -- smallest best
 
 data BlockMove = BlockMove {bmShift :: Int, bmRot :: BlockRotation, bmBlock :: Block}
 
-horizontalNess :: Board -> Int
+horizontalNess :: Board -> Score
 horizontalNess b =
   let
     coords = V2 <$> [1 .. boardWidth] <*> [1 .. boardHeight - 1]

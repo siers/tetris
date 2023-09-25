@@ -15,6 +15,7 @@ module Tetris
   , clearFullRows
   , freezeBlock
   , initNextBlock
+  , initBlock
   -- Game state handlers
   , execTetris
   , evalTetris
@@ -38,7 +39,7 @@ module Tetris
   , TetrisT
   , TetrisIO
   -- Lenses
-  , block, board, level, nextShape, score, shape, perf
+  , block, board, level, nextShape, score, shape, perf, rnd
   -- Constants
   , boardHeight, boardWidth, relCells
   -- Utils
@@ -48,7 +49,7 @@ module Tetris
 import Prelude hiding (Left, Right)
 import Control.Applicative ((<|>))
 import Control.Monad (mfilter, when, (<=<))
-import Control.Monad.IO.Class (MonadIO(..), liftIO)
+import Control.Monad.IO.Class (MonadIO(..))
 
 import Control.Monad.Trans.State (StateT(..), gets, evalStateT, execStateT)
 import Data.Map (Map)
@@ -57,7 +58,8 @@ import Data.Sequence (Seq(..), (><))
 import qualified Data.Sequence as Seq
 import Control.Lens hiding (Empty, (:<))
 import Linear.V2 (V2(..), _y)
-import System.Random (getStdRandom, randomR)
+import System.Random (StdGen, randomR, initStdGen)
+import Data.Maybe (fromMaybe)
 -- Types and instances
 
 -- | Tetris shape types
@@ -98,6 +100,7 @@ data Game = Game
   , _score        :: Int
   , _board        :: Board
   , _perf         :: Int -- solver's performance score
+  , _rnd          :: StdGen
   } deriving (Eq, Show)
 makeLenses ''Game
 
@@ -130,6 +133,9 @@ instance Translatable Block where
   translateBy n d b =
     b & origin %~ translateBy n d
       & extra  %~ fmap (translateBy n d)
+
+instance Semigroup BlockRotation where
+  a <> b = toEnum (flip mod 4 $ fromEnum a + fromEnum b)
 
 -- Low level functions on blocks and coordinates
 
@@ -180,25 +186,25 @@ coords b = b ^. origin : b ^. extra
 -- | Facilitates cycling through at least 4 occurences of each shape
 -- before next bag (random permutation of 4*each tetrimino) is created. If input is empty,
 -- generates new bag, otherwise just unshifts the first value and returns pair.
-bagFourTetriminoEach :: Seq.Seq Tetrimino -> IO (Tetrimino, Seq.Seq Tetrimino)
+bagFourTetriminoEach :: Seq.Seq Tetrimino -> Tetris (Tetrimino, Seq.Seq Tetrimino)
 bagFourTetriminoEach (t :<| ts) = pure (t, ts)
 bagFourTetriminoEach Empty =
   bagFourTetriminoEach <=< shuffle . Seq.fromList . take 28 $ cycle [I ..]
 
 -- | Initialize a game with a given level
-initGame :: Int -> IO Game
-initGame lvl = do
-  (s1, bag1) <- bagFourTetriminoEach mempty
-  (s2, bag2) <- bagFourTetriminoEach bag1
-  pure $ Game
+initGame :: Int -> Maybe StdGen -> IO Game
+initGame lvl rndGen = do
+  rnd <- flip fromMaybe rndGen <$> initStdGen
+  pure . execTetris (nextBlock >> nextBlock) $ Game
     { _level        = lvl
-    , _block        = initBlock s1
-    , _nextShape    = s2
-    , _nextShapeBag = bag2
+    , _block        = initBlock I
+    , _nextShape    = I
+    , _nextShapeBag = Seq.empty
     , _score        = 0
     , _rowClears    = mempty
     , _board        = mempty
     , _perf         = 0
+    , _rnd          = rnd
     }
 
 isGameOver :: Game -> Bool
@@ -320,11 +326,11 @@ initNextBlock :: Tetris ()
 initNextBlock = use nextShape >>= \s -> block .= initBlock s
 
 -- | Replace block with next block
-nextBlock :: MonadIO m => TetrisT m ()
+nextBlock :: Tetris ()
 nextBlock = do
   initNextBlock
   bag <- use nextShapeBag
-  (t, ts) <- liftIO $ bagFourTetriminoEach bag
+  (t, ts) <- bagFourTetriminoEach bag
   nextShape .= t
   nextShapeBag .= ts
 
@@ -353,11 +359,12 @@ isValidBlockPosition brd = all validCoord . coords
 -- General utilities
 
 -- | Shuffle a sequence (random permutation)
-shuffle :: Seq.Seq a -> IO (Seq.Seq a)
+shuffle :: Seq.Seq a -> Tetris (Seq.Seq a)
 shuffle xs
-  | null xs = mempty
+  | null xs = pure mempty
   | otherwise = do
-    randomPosition <- getStdRandom (randomR (0, length xs - 1))
-    case Seq.splitAt randomPosition xs of
+    (cut, rnd') <- randomR (0, length xs - 1) <$> use rnd
+    rnd .= rnd'
+    case Seq.splitAt cut xs of
       (left, y :<| ys) ->  fmap (y <|) (shuffle $ left >< ys)
       _ -> error "impossible"
