@@ -141,7 +141,7 @@ handleTick = do
   unless (ui ^. paused || ui ^. game . to isGameOver) $ do
     -- awkward, should just mutate the inner state
     --zoom game timeStep
-    let maybeSolve = if ui ^. autosolve then liftIO . fmap (execTetris pickMove) . solve (Just 5) pickMove else pure
+    let maybeSolve = if ui ^. autosolve then liftIO . fmap (execTetris pickMove) . solve (Just 1) pickMove else pure
     (game .=) =<< maybeSolve =<< execStateT timeStep (ui ^. game)
     locked .= False
 

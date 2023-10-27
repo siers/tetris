@@ -74,5 +74,5 @@ solveScores = do
           flip map solvers $ \(name, solver) ->
             bench name (whnfIO (solver iterations))
     Nothing -> do
-      -- void $ initGame 0 >>= solve (Just 1000000000) S.pickMove
-      forM_ solvers $ \(_, solver) -> solver iterations
+      -- forM_ solvers $ \(_, solver) -> solver iterations
+      void $ initGame 0 (Just (mkStdGen 0)) >>= solve (Just 1000000000) S.pickMove
