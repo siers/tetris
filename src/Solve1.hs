@@ -12,7 +12,6 @@ import qualified Data.Map as M
 import Data.Sequence (ViewL (..))
 import qualified Data.Sequence as Seq
 import Data.Traversable (for)
-import Linear.V2 (V2 (..))
 import Tetris
 import Prelude hiding (Left, Right)
 

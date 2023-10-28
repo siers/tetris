@@ -3,7 +3,7 @@
 let
   drv = haskellPackages.callPackage ({ mkDerivation, base, brick, containers, directory, filepath
       , lens, lib, linear, optparse-applicative, random, transformers
-      , vty, mtl, async, criterion, hspec, hspec-discover, QuickCheck
+      , vty, mtl, async, criterion, hspec, hspec-discover, QuickCheck, aeson
       }:
       mkDerivation {
         pname = "tetris";
@@ -12,7 +12,7 @@ let
         isLibrary = true;
         isExecutable = true;
         libraryHaskellDepends = [
-          base brick containers lens linear random transformers vty mtl async criterion hspec hspec-discover QuickCheck
+          base brick containers lens linear random transformers vty mtl async criterion hspec hspec-discover QuickCheck aeson
         ];
         executableHaskellDepends = [
           base directory filepath optparse-applicative

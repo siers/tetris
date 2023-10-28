@@ -21,7 +21,6 @@ import Control.Monad.Trans.State (execStateT)
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Graphics.Vty as V
-import Linear.V2 (V2 (..))
 import Scorer (solve)
 import Solve (pickMove)
 import Tetris

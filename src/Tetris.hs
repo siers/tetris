@@ -1,5 +1,8 @@
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE PatternSynonyms #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 
@@ -29,6 +32,7 @@ module Tetris (
   -- Types
   Block (..),
   Coord,
+  pattern V2,
   Direction (..),
   BlockRotation (..),
   Game (..),
@@ -61,23 +65,48 @@ import Control.Lens hiding (Empty, (:<))
 import Control.Monad (mfilter, when, (<=<))
 import Control.Monad.IO.Class (MonadIO (..))
 import Control.Monad.Trans.State (StateT (..), evalStateT, execStateT, gets)
+import Data.Aeson hiding ((.=))
+import Data.Aeson.TH
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
 import Data.Sequence (Seq (..), (><))
 import qualified Data.Sequence as Seq
-import Linear.V2 (V2 (..), _y)
+import GHC.Generics
+import qualified Linear.V2 as L
 import System.Random (StdGen, initStdGen, randomR)
+import qualified System.Random.SplitMix as SM
 import Prelude hiding (Left, Right)
 
 -- Types and instances
 
 -- | Tetris shape types
 data Tetrimino = I | O | T | S | Z | J | L
-  deriving (Eq, Show, Enum)
+  deriving (Eq, Show, Enum, Generic)
 
--- | Coordinates
-type Coord = V2 Int
+$(deriveJSON defaultOptions ''Tetrimino)
+
+-- data V2 = V2 Int Int
+
+{- | Coordinates
+Newtype over V2 Int just to save the Num instance while enabling aeson serialization.
+-}
+newtype Coord = Coord' {_c :: L.V2 Int} deriving (Generic, Eq, Ord, Show, Num)
+
+coord :: Int -> Int -> Coord
+coord = (Coord' .) . L.V2
+
+pattern V2 :: Int -> Int -> Coord
+pattern V2 x y = Coord' (L.V2 x y)
+
+{-# COMPLETE V2 #-}
+
+makeLenses ''Coord
+$(deriveJSON defaultOptions ''L.V2)
+$(deriveJSON defaultOptions ''Coord)
+
+instance ToJSONKey Coord
+instance FromJSONKey Coord
 
 -- | Tetris shape in location context
 data Block = Block
@@ -91,12 +120,17 @@ data Block = Block
   deriving (Eq, Show)
 
 makeLenses ''Block
+$(deriveJSON defaultOptions ''Block)
 
 data Direction = Left | Right | Down
   deriving (Eq, Show)
 
+$(deriveJSON defaultOptions ''Direction)
+
 data BlockRotation = BrRot0 | BrRot90 | BrRot180 | BrRot270
   deriving (Eq, Show, Enum)
+
+$(deriveJSON defaultOptions ''BlockRotation)
 
 {- | Board
 
@@ -121,6 +155,10 @@ data Game = Game
 
 makeLenses ''Game
 
+$(deriveJSON defaultOptions ''SM.SMGen)
+$(deriveJSON defaultOptions ''StdGen)
+$(deriveJSON defaultOptions ''Game)
+
 type TetrisT = StateT Game
 
 type Tetris a = forall m. (Monad m) => TetrisT m a
@@ -144,9 +182,9 @@ class Translatable s where
   translateBy :: Int -> Direction -> s -> s
 
 instance Translatable Coord where
-  translateBy n Left (V2 x y) = V2 (x - n) y
-  translateBy n Right (V2 x y) = V2 (x + n) y
-  translateBy n Down (V2 x y) = V2 x (y - n)
+  translateBy n Left (V2 x y) = coord (x - n) y
+  translateBy n Right (V2 x y) = coord (x + n) y
+  translateBy n Down (V2 x y) = coord x (y - n)
 
 instance Translatable Block where
   translateBy n d b =
@@ -163,13 +201,13 @@ initBlock :: Tetrimino -> Block
 initBlock t = Block t startOrigin . fmap (+ startOrigin) . relCells $ t
 
 relCells :: Tetrimino -> [Coord]
-relCells I = map (uncurry V2) [(-2, 0), (-1, 0), (1, 0)]
-relCells O = map (uncurry V2) [(-1, 0), (-1, -1), (0, -1)]
-relCells S = map (uncurry V2) [(-1, -1), (0, -1), (1, 0)]
-relCells Z = map (uncurry V2) [(-1, 0), (0, -1), (1, -1)]
-relCells L = map (uncurry V2) [(-1, -1), (-1, 0), (1, 0)]
-relCells J = map (uncurry V2) [(-1, 0), (1, 0), (1, -1)]
-relCells T = map (uncurry V2) [(-1, 0), (0, -1), (1, 0)]
+relCells I = map (uncurry coord) [(-2, 0), (-1, 0), (1, 0)]
+relCells O = map (uncurry coord) [(-1, 0), (-1, -1), (0, -1)]
+relCells S = map (uncurry coord) [(-1, -1), (0, -1), (1, 0)]
+relCells Z = map (uncurry coord) [(-1, 0), (0, -1), (1, -1)]
+relCells L = map (uncurry coord) [(-1, -1), (-1, 0), (1, 0)]
+relCells J = map (uncurry coord) [(-1, 0), (1, 0), (1, -1)]
+relCells T = map (uncurry coord) [(-1, 0), (0, -1), (1, 0)]
 
 -- | Visible, active board size
 boardWidth, boardHeight :: Int
@@ -178,7 +216,7 @@ boardHeight = 20
 
 -- | Starting block origin
 startOrigin :: Coord
-startOrigin = V2 6 22
+startOrigin = coord 6 22
 
 {- | Rotate the block clockwise (or counter-) around origin
 *Note*: Strict unsafe rotation not respecting boundaries
@@ -193,9 +231,9 @@ rotateBlockRaw br b@(Block s o@(V2 xo yo) cs)
   | otherwise = rotateWith br
  where
   rotate BrRot0 v = v
-  rotate BrRot90 (V2 x y) = V2 y (-x)
-  rotate BrRot180 (V2 x y) = V2 (-x) (-y)
-  rotate BrRot270 (V2 x y) = V2 (-y) x
+  rotate BrRot90 (V2 x y) = coord y (-x)
+  rotate BrRot180 (V2 x y) = coord (-x) (-y)
+  rotate BrRot270 (V2 x y) = coord (-y) x
   rotateWith br = b & extra %~ fmap ((+ o) . rotate br . subtract o)
 
 -- | Get coordinates of entire block
@@ -259,7 +297,7 @@ clearFullRows = do
   -- Clear cells in full rows
   modifying board $ M.filterWithKey $ \(V2 _ y) _ -> y `notElem` fullRows
   -- Shift cells above full rows
-  modifying board $ M.mapKeysMonotonic $ over _y $ \y ->
+  modifying board $ M.mapKeysMonotonic $ over (c . L._y) $ \y ->
     y - length (filter (< y) fullRows)
   return $ length fullRows
 
@@ -320,7 +358,7 @@ isStopped :: Board -> Block -> Bool
 isStopped brd = any stopped . coords
  where
   stopped = (||) <$> atBottom <*> (`M.member` brd) . translate Down
-  atBottom = (== 1) . view _y
+  atBottom = (== 1) . view (c . L._y)
 
 hardDrop :: Tetris ()
 hardDrop = hardDroppedBlock >>= assign block
@@ -336,7 +374,7 @@ hardDroppedBlock = do
         , xo == x
         , yo < y
         ]
-      minY = minimum $ view _y <$> blockCoords
+      minY = minimum $ view (c . L._y) <$> blockCoords
       dist = minimum $ subtract 1 <$> (minY : diffs)
   translateBy dist Down <$> use block
 

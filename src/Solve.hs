@@ -10,7 +10,6 @@ import Data.Foldable (for_)
 import Data.Function (on)
 import Data.List (minimumBy)
 import Data.Maybe
-import Linear.V2 (V2 (..))
 import Tetris
 import Prelude hiding (Left, Right)
 

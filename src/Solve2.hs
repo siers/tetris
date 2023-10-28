@@ -8,7 +8,6 @@ import Control.Monad.Trans.State (get, gets)
 import Data.Foldable (for_)
 import Data.Function (on)
 import Data.List (minimumBy)
-import Linear.V2 (V2 (..))
 import Tetris
 import Prelude hiding (Left, Right)
 
