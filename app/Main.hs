@@ -1,6 +1,9 @@
 module Main where
 
-import Control.Monad (when)
+import Control.Monad (join, mfilter, when)
+import Data.Aeson
+import Data.ByteString.Lazy.Char8 (pack, unpack)
+import Data.Foldable (traverse_)
 import Options.Applicative
 import Scorer
 import qualified System.Directory as D
@@ -8,7 +11,7 @@ import System.Exit (exitSuccess)
 import System.FilePath ((</>))
 import Tetris (Game (..))
 import Text.Read (readMaybe)
-import UI.Game (playGame)
+import UI.Game
 import UI.PickLevel (pickLevel)
 
 data Opts = Opts
@@ -96,9 +99,19 @@ main = do
   (Opts hd ml hs slvr) <- execParser fullopts -- get CLI opts/args
   when hs (getHighScore >>= printM >> exitSuccess) -- show high score and exit
   when slvr (solveScores >> exitSuccess)
-  l <- maybe pickLevel return ml -- pick level prompt if necessary
-  g <- playGame l (hdOptStr hd) -- play game
-  handleEndGame (_score g) -- save & print score
+
+  newUI <-
+    pure . join $
+      createUI
+        <$> maybe pickLevel return ml -- pick level prompt if necessary
+        <*> pure (hdOptStr hd) -- hard drop preview flag
+  ui <- maybe newUI return =<< fromSaveGame
+  ui' <- playGame ui -- play game
+  when (uiIsGameOver ui') $ handleEndGame (_score (_game ui')) -- save & print score
+  saveGame ui'
+
+fromSaveGame :: IO (Maybe UI)
+fromSaveGame = (mfilter (not . uiIsGameOver) . decode . pack =<<) <$> (readResourceStr =<< getSaveGameFile)
 
 handleEndGame :: Int -> IO ()
 handleEndGame s = do
@@ -110,27 +123,38 @@ handleEndGame s = do
   justShowScore = putStrLn $ "Your final score: " ++ show s
   newHighScore = do
     putStrLn $ "Congrats! You just got the new highest score: " ++ show s
-    setHighScore s
+    saveResource (show s) =<< getLeaderboardFile
+
+saveGame :: UI -> IO ()
+saveGame ui = (saveResource . unpack . encode $ ui) =<< getSaveGameFile
 
 printM :: (Show a) => Maybe a -> IO ()
-printM Nothing = putStrLn "None"
-printM (Just s) = print s
+printM = traverse_ print
 
-getHighScore :: IO (Maybe Int)
-getHighScore = do
-  lb <- getLeaderboardFile
-  exists <- D.doesFileExist lb
+readResourceStr :: FilePath -> IO (Maybe String)
+readResourceStr f = do
+  exists <- D.doesFileExist f
   if exists
-    then readMaybe <$> readFile lb
+    then Just <$> readFile f
     else return Nothing
 
-setHighScore :: Int -> IO ()
-setHighScore s = do
-  lb <- getLeaderboardFile
-  writeFile lb (show s)
+readResource :: (Read a) => FilePath -> IO (Maybe a)
+readResource f = (readMaybe =<<) <$> readResourceStr f
 
-getLeaderboardFile :: IO FilePath
-getLeaderboardFile = do
+getHighScore :: IO (Maybe Int)
+getHighScore = readResource =<< getLeaderboardFile
+
+saveResource :: String -> FilePath -> IO ()
+saveResource s f = writeFile f s
+
+getResourceFilename :: String -> IO FilePath
+getResourceFilename resource = do
   xdg <- D.getXdgDirectory D.XdgData "tetris"
   D.createDirectoryIfMissing True xdg
-  return (xdg </> "leaderboard")
+  return (xdg </> resource)
+
+getLeaderboardFile :: IO FilePath
+getLeaderboardFile = getResourceFilename "leaderboard"
+
+getSaveGameFile :: IO FilePath
+getSaveGameFile = getResourceFilename "saved.json"

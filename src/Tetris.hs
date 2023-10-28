@@ -86,12 +86,12 @@ data Tetrimino = I | O | T | S | Z | J | L
 
 $(deriveJSON defaultOptions ''Tetrimino)
 
--- data V2 = V2 Int Int
+$(deriveJSON defaultOptions ''L.V2)
 
 {- | Coordinates
 Newtype over V2 Int just to save the Num instance while enabling aeson serialization.
 -}
-newtype Coord = Coord' {_c :: L.V2 Int} deriving (Generic, Eq, Ord, Show, Num)
+newtype Coord = Coord' {_c :: L.V2 Int} deriving (Generic, Eq, Ord, Show, Num, FromJSON, ToJSON)
 
 coord :: Int -> Int -> Coord
 coord = (Coord' .) . L.V2
@@ -102,8 +102,6 @@ pattern V2 x y = Coord' (L.V2 x y)
 {-# COMPLETE V2 #-}
 
 makeLenses ''Coord
-$(deriveJSON defaultOptions ''L.V2)
-$(deriveJSON defaultOptions ''Coord)
 
 instance ToJSONKey Coord
 instance FromJSONKey Coord

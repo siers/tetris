@@ -1,10 +1,14 @@
+{-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE TupleSections #-}
 
 module UI.Game (
+  createUI,
   playGame,
+  UI (..),
+  uiIsGameOver,
 )
 where
 
@@ -15,9 +19,11 @@ import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
 import Control.Concurrent (forkIO, threadDelay)
 import Control.Lens hiding (op, preview, zoom)
-import Control.Monad (forever, unless, void, when)
+import Control.Monad (forever, mfilter, unless, void, when)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.Trans.State (execStateT)
+import Data.Aeson hiding ((.=))
+import Data.Aeson.TH
 import Data.Map (Map)
 import qualified Data.Map as M
 import qualified Graphics.Vty as V
@@ -40,6 +46,7 @@ data UI = UI
   }
 
 makeLenses ''UI
+$(deriveJSON defaultOptions ''UI)
 
 -- | Ticks mark passing of time
 data Tick = Tick
@@ -63,31 +70,33 @@ app =
     , appAttrMap = const theMap
     }
 
-playGame ::
+createUI ::
   -- | Starting level
   Int ->
   -- | Preview cell (Nothing == no preview)
   Maybe String ->
-  IO Game
-playGame lvl mp = do
-  let delay = levelToDelay lvl
+  IO UI
+createUI lvl preview = do
+  initialGame <- initGame lvl Nothing
+  pure $
+    UI
+      { _game = initialGame
+      , _preview = preview
+      , _locked = False
+      , _paused = False
+      , _autosolve = False
+      }
+
+playGame :: UI -> IO UI
+playGame ui@UI{_game = Game{_level}} = do
+  let delay = levelToDelay _level
   chan <- newBChan 10
   void . forkIO $ forever $ do
     writeBChan chan Tick
     threadDelay delay
-  initialGame <- initGame lvl Nothing
   let builder = V.mkVty V.defaultConfig
   initialVty <- builder
-  ui <-
-    customMain initialVty builder (Just chan) app $
-      UI
-        { _game = initialGame
-        , _preview = mp
-        , _locked = False
-        , _paused = False
-        , _autosolve = False
-        }
-  return $ ui ^. game
+  customMain initialVty builder (Just chan) app ui
 
 levelToDelay :: Int -> Int
 levelToDelay n = floor $ 400000 * (0.85 :: Double) ^ (2 * n)
@@ -118,7 +127,9 @@ handleEvent (VtyEvent (V.EvKey (V.KChar 's') [])) =
   -- Solve
   guarded (not . view locked) $ autosolve %~ not
 handleEvent (VtyEvent (V.EvKey (V.KChar 'r') [])) = restart
-handleEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = halt
+handleEvent (VtyEvent (V.EvKey (V.KChar 'q') [])) = do
+  guarded (not . view locked) $ paused .~ True
+  halt
 handleEvent (VtyEvent (V.EvKey V.KEsc [])) = halt
 handleEvent _ = pure ()
 
@@ -138,20 +149,20 @@ modification when predicate passes and game is not over.
 guarded :: (UI -> Bool) -> (UI -> UI) -> EventM Name UI ()
 guarded p f = do
   ui <- get
-  when (p ui && not (ui ^. game . to isGameOver)) $
+  when (p ui && not (uiIsGameOver ui)) $
     modify f
 
 -- | Handles time steps, does nothing if game is over or paused
 guarded' :: (UI -> Bool) -> EventM Name UI () -> EventM Name UI ()
 guarded' p f = do
   ui <- get
-  when (p ui && not (ui ^. game . to isGameOver)) f
+  when (p ui && not (uiIsGameOver ui)) f
 
 -- | Handles time steps, does nothing if game is over or paused
 handleTick :: EventM Name UI ()
 handleTick = do
   ui <- get
-  unless (ui ^. paused || ui ^. game . to isGameOver) $ do
+  unless (ui ^. paused || uiIsGameOver ui) $ do
     -- awkward, should just mutate the inner state
     -- zoom game timeStep
     let maybeSolve = if ui ^. autosolve then liftIO . fmap (execTetris pickMove) . solve (Just 1) pickMove else pure
