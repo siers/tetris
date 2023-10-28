@@ -177,40 +177,44 @@ restart = do
   game .= g
   locked .= False
 
+uiIsGameOver :: UI -> Bool
+uiIsGameOver = (^. game . to isGameOver)
+
 -- Drawing
 
 drawUI :: UI -> [Widget Name]
-drawUI ui =
-  [ C.vCenter $
+drawUI ui = pause ++ [grid]
+ where
+  pause =
+    mfilter (\_ -> ui ^. paused) . return $
+      C.centerLayer . padLeft (Pad 2) . withAttr pausedAttr $
+        str "PAUSED"
+
+  grid =
+    C.vCenter $
       vLimit 22 $
         hBox
           [ padLeft Max $ padRight (Pad 2) $ drawStats (ui ^. game)
           , drawGrid ui
           , padRight Max $ padLeft (Pad 2) $ drawInfo (ui ^. game)
           ]
-  ]
 
 drawGrid :: UI -> Widget Name
 drawGrid ui =
-  hLimit 22 $
-    withBorderStyle BS.unicodeBold $
-      B.borderWithLabel (str "Tetris") $
-        if ui ^. paused
-          then C.center $ str "Paused"
-          else
-            vBox $
-              [boardHeight, boardHeight - 1 .. 1] <&> \r ->
-                foldr (<+>) emptyWidget
-                  . M.filterWithKey (\(V2 _ y) _ -> r == y)
-                  $ mconcat
-                    [ drawBlockCell NormalBlock <$> ui ^. (game . board)
-                    , blockMap NormalBlock (ui ^. (game . block))
-                    , case ui ^. preview of
-                        Nothing -> M.empty
-                        Just s -> blockMap (HardDropBlock s) (evalTetris hardDroppedBlock (ui ^. game))
-                    , emptyCellMap
-                    ]
+  hLimit 22 . withBorderStyle BS.unicodeBold $ B.borderWithLabel (str "Tetris") drawTetris
  where
+  drawTetris =
+    vBox $
+      [boardHeight, boardHeight - 1 .. 1] <&> \r ->
+        foldr (<+>) emptyWidget . M.filterWithKey (\(V2 _ y) _ -> r == y) $
+          mconcat
+            [ drawBlockCell NormalBlock <$> ui ^. (game . board)
+            , blockMap NormalBlock (ui ^. (game . block))
+            , case ui ^. preview of
+                Nothing -> M.empty
+                Just s -> blockMap (HardDropBlock s) (evalTetris hardDroppedBlock (ui ^. game))
+            , emptyCellMap
+            ]
   blockMap v b =
     M.fromList $ [(c, drawBlockCell v (b ^. shape)) | c <- coords b]
 
@@ -347,6 +351,7 @@ theMap =
     , (jhAttr, fg $ tToColor J)
     , (lhAttr, fg $ tToColor L)
     , (gameOverAttr, fg V.red `V.withStyle` V.bold)
+    , (pausedAttr, fg V.blue `V.withStyle` V.bold)
     ]
 
 tToColor :: Tetrimino -> V.Color
@@ -381,3 +386,6 @@ emptyAttr = attrName "empty"
 
 gameOverAttr :: AttrName
 gameOverAttr = attrName "gameOver"
+
+pausedAttr :: AttrName
+pausedAttr = attrName "paused"
