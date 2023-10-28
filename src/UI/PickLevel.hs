@@ -1,39 +1,40 @@
-module UI.PickLevel
-  ( pickLevel
-  ) where
-
-import System.Exit (exitSuccess)
-import Control.Monad (when)
+module UI.PickLevel (
+  pickLevel,
+)
+where
 
 import Brick
 import qualified Brick.Widgets.Border as B
 import qualified Brick.Widgets.Border.Style as BS
 import qualified Brick.Widgets.Center as C
+import Control.Monad (when)
 import qualified Graphics.Vty as V
+import System.Exit (exitSuccess)
 
 app :: App (Maybe Int) e ()
-app = App
-  { appDraw         = const [ui]
-  , appHandleEvent  = handleEvent
-  , appStartEvent   = pure ()
-  , appAttrMap      = const $ attrMap V.defAttr []
-  , appChooseCursor = neverShowCursor
-  }
+app =
+  App
+    { appDraw = const [ui]
+    , appHandleEvent = handleEvent
+    , appStartEvent = pure ()
+    , appAttrMap = const $ attrMap V.defAttr []
+    , appChooseCursor = neverShowCursor
+    }
 
 ui :: Widget ()
 ui =
-  padLeft (Pad 19)
-    $ padRight (Pad 21)
-    $ C.center
-    $ vLimit 22
-    $ hLimit 22
-    $ withBorderStyle BS.unicodeBold
-    $ B.borderWithLabel (str "Tetris")
-    $ C.center
-    $ str " Choose Level (0-9)"
+  padLeft (Pad 19) $
+    padRight (Pad 21) $
+      C.center $
+        vLimit 22 $
+          hLimit 22 $
+            withBorderStyle BS.unicodeBold $
+              B.borderWithLabel (str "Tetris") $
+                C.center $
+                  str " Choose Level (0-9)"
 
 handleEvent :: BrickEvent () e -> EventM () (Maybe Int) ()
-handleEvent (VtyEvent (V.EvKey V.KEsc        _)) = halt
+handleEvent (VtyEvent (V.EvKey V.KEsc _)) = halt
 handleEvent (VtyEvent (V.EvKey (V.KChar 'q') _)) = halt
 handleEvent (VtyEvent (V.EvKey (V.KChar 'Q') _)) = halt
 handleEvent (VtyEvent (V.EvKey (V.KChar d) [])) =

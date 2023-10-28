@@ -2,64 +2,74 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE TemplateHaskell #-}
-module Tetris
-  (
+
+module Tetris (
   -- Game state modifiers
-    initGame
-  , timeStep
-  , shift
-  , hardDrop
-  , rotate
-  , rotateBlock
-  , rotateBlockRaw
-  , clearFullRows
-  , freezeBlock
-  , initNextBlock
-  , initBlock
+  initGame,
+  timeStep,
+  shift,
+  hardDrop,
+  rotate,
+  rotateBlock,
+  rotateBlockRaw,
+  clearFullRows,
+  freezeBlock,
+  initNextBlock,
+  initBlock,
   -- Game state handlers
-  , execTetris
-  , evalTetris
-  , runTetris
+  execTetris,
+  evalTetris,
+  runTetris,
   -- Game state queries
-  , isGameOver
-  , isFree
-  , isValidBlockPosition
-  , hardDroppedBlock
-  , coords
+  isGameOver,
+  isFree,
+  isValidBlockPosition,
+  hardDroppedBlock,
+  coords,
   -- Types
-  , Block(..)
-  , Coord
-  , Direction(..)
-  , BlockRotation(..)
-  , Game(..)
-  , Tetrimino(..)
-  , Translatable(..)
-  , Board
-  , Tetris
-  , TetrisT
-  , TetrisIO
+  Block (..),
+  Coord,
+  Direction (..),
+  BlockRotation (..),
+  Game (..),
+  Tetrimino (..),
+  Translatable (..),
+  Board,
+  Tetris,
+  TetrisT,
+  TetrisIO,
   -- Lenses
-  , block, board, level, nextShape, score, shape, perf, rnd
+  block,
+  board,
+  level,
+  nextShape,
+  score,
+  shape,
+  perf,
+  rnd,
   -- Constants
-  , boardHeight, boardWidth, relCells
+  boardHeight,
+  boardWidth,
+  relCells,
   -- Utils
-  , shuffle
-  ) where
+  shuffle,
+)
+where
 
-import Prelude hiding (Left, Right)
 import Control.Applicative ((<|>))
+import Control.Lens hiding (Empty, (:<))
 import Control.Monad (mfilter, when, (<=<))
-import Control.Monad.IO.Class (MonadIO(..))
-
-import Control.Monad.Trans.State (StateT(..), gets, evalStateT, execStateT)
+import Control.Monad.IO.Class (MonadIO (..))
+import Control.Monad.Trans.State (StateT (..), evalStateT, execStateT, gets)
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.Sequence (Seq(..), (><))
-import qualified Data.Sequence as Seq
-import Control.Lens hiding (Empty, (:<))
-import Linear.V2 (V2(..), _y)
-import System.Random (StdGen, randomR, initStdGen)
 import Data.Maybe (fromMaybe)
+import Data.Sequence (Seq (..), (><))
+import qualified Data.Sequence as Seq
+import Linear.V2 (V2 (..), _y)
+import System.Random (StdGen, initStdGen, randomR)
+import Prelude hiding (Left, Right)
+
 -- Types and instances
 
 -- | Tetris shape types
@@ -71,10 +81,14 @@ type Coord = V2 Int
 
 -- | Tetris shape in location context
 data Block = Block
-  { _shape  :: Tetrimino -- ^ block type
-  , _origin :: Coord -- ^ origin
-  , _extra  :: [Coord] -- ^ extraneous cells
-  } deriving (Eq, Show)
+  { _shape :: Tetrimino
+  -- ^ block type
+  , _origin :: Coord
+  -- ^ origin
+  , _extra :: [Coord]
+  -- ^ extraneous cells
+  }
+  deriving (Eq, Show)
 
 makeLenses ''Block
 
@@ -84,28 +98,33 @@ data Direction = Left | Right | Down
 data BlockRotation = BrRot0 | BrRot90 | BrRot180 | BrRot270
   deriving (Eq, Show, Enum)
 
--- | Board
---
--- If coordinate not present in map, yet in bounds, then it is empty,
--- otherwise its value is the type of tetrimino occupying it.
+{- | Board
+
+If coordinate not present in map, yet in bounds, then it is empty,
+otherwise its value is the type of tetrimino occupying it.
+-}
 type Board = Map Coord Tetrimino
 
 -- | Game state
 data Game = Game
-  { _level        :: Int
-  , _block        :: Block
-  , _nextShape    :: Tetrimino
+  { _level :: Int
+  , _block :: Block
+  , _nextShape :: Tetrimino
   , _nextShapeBag :: Seq.Seq Tetrimino
-  , _rowClears    :: Seq.Seq Int
-  , _score        :: Int
-  , _board        :: Board
-  , _perf         :: Int -- solver's performance score
-  , _rnd          :: StdGen
-  } deriving (Eq, Show)
+  , _rowClears :: Seq.Seq Int
+  , _score :: Int
+  , _board :: Board
+  , _perf :: Int -- solver's performance score
+  , _rnd :: StdGen
+  }
+  deriving (Eq, Show)
+
 makeLenses ''Game
 
 type TetrisT = StateT Game
+
 type Tetris a = forall m. (Monad m) => TetrisT m a
+
 type TetrisIO a = forall m. (MonadIO m) => TetrisT m a
 
 evalTetris :: Tetris a -> Game -> a
@@ -125,14 +144,15 @@ class Translatable s where
   translateBy :: Int -> Direction -> s -> s
 
 instance Translatable Coord where
-  translateBy n Left (V2 x y)  = V2 (x-n) y
-  translateBy n Right (V2 x y) = V2 (x+n) y
-  translateBy n Down (V2 x y)  = V2 x (y-n)
+  translateBy n Left (V2 x y) = V2 (x - n) y
+  translateBy n Right (V2 x y) = V2 (x + n) y
+  translateBy n Down (V2 x y) = V2 x (y - n)
 
 instance Translatable Block where
   translateBy n d b =
-    b & origin %~ translateBy n d
-      & extra  %~ fmap (translateBy n d)
+    b
+      & origin %~ translateBy n d
+      & extra %~ fmap (translateBy n d)
 
 instance Semigroup BlockRotation where
   a <> b = toEnum (flip mod 4 $ fromEnum a + fromEnum b)
@@ -160,16 +180,17 @@ boardHeight = 20
 startOrigin :: Coord
 startOrigin = V2 6 22
 
--- | Rotate the block clockwise (or counter-) around origin
--- *Note*: Strict unsafe rotation not respecting boundaries
--- Safety can only be assured within Game context
+{- | Rotate the block clockwise (or counter-) around origin
+*Note*: Strict unsafe rotation not respecting boundaries
+Safety can only be assured within Game context
+-}
 rotateBlockRaw :: BlockRotation -> Block -> Block
 rotateBlockRaw br b@(Block s o@(V2 xo yo) cs)
-  | s == O                             = b
-  | s == I && br == BrRot0             = b
+  | s == O = b
+  | s == I && br == BrRot0 = b
   | s == I && V2 xo (yo + 1) `elem` cs = rotateWith BrRot270
-  | s == I                             = rotateWith BrRot90
-  | otherwise                          = rotateWith br
+  | s == I = rotateWith BrRot90
+  | otherwise = rotateWith br
  where
   rotate BrRot0 v = v
   rotate BrRot90 (V2 x y) = V2 y (-x)
@@ -183,9 +204,10 @@ coords b = b ^. origin : b ^. extra
 
 -- Higher level functions on game and board
 
--- | Facilitates cycling through at least 4 occurences of each shape
--- before next bag (random permutation of 4*each tetrimino) is created. If input is empty,
--- generates new bag, otherwise just unshifts the first value and returns pair.
+{- | Facilitates cycling through at least 4 occurences of each shape
+before next bag (random permutation of 4*each tetrimino) is created. If input is empty,
+generates new bag, otherwise just unshifts the first value and returns pair.
+-}
 bagFourTetriminoEach :: Seq.Seq Tetrimino -> Tetris (Tetrimino, Seq.Seq Tetrimino)
 bagFourTetriminoEach (t :<| ts) = pure (t, ts)
 bagFourTetriminoEach Empty =
@@ -195,23 +217,24 @@ bagFourTetriminoEach Empty =
 initGame :: Int -> Maybe StdGen -> IO Game
 initGame lvl rndGen = do
   rnd <- flip fromMaybe rndGen <$> initStdGen
-  pure . execTetris (nextBlock >> nextBlock) $ Game
-    { _level        = lvl
-    , _block        = initBlock I
-    , _nextShape    = I
-    , _nextShapeBag = Seq.empty
-    , _score        = 0
-    , _rowClears    = mempty
-    , _board        = mempty
-    , _perf         = 0
-    , _rnd          = rnd
-    }
+  pure . execTetris (nextBlock >> nextBlock) $
+    Game
+      { _level = lvl
+      , _block = initBlock I
+      , _nextShape = I
+      , _nextShapeBag = Seq.empty
+      , _score = 0
+      , _rowClears = mempty
+      , _board = mempty
+      , _perf = 0
+      , _rnd = rnd
+      }
 
 isGameOver :: Game -> Bool
 isGameOver g = blockStopped g && g ^. (block . origin) == startOrigin
 
 -- | The main game execution, this is executed at each discrete time step
-timeStep :: MonadIO m => TetrisT m ()
+timeStep :: (MonadIO m) => TetrisT m ()
 timeStep = do
   gets blockStopped >>= \case
     False -> gravitate
@@ -245,29 +268,30 @@ addToRowClears :: Int -> Tetris ()
 addToRowClears 0 = rowClears .= mempty
 addToRowClears n = rowClears %= (|> n)
 
--- | This updates game points with respect to the current
--- _rowClears value (thus should only be used ONCE per step)
---
--- Note I'm keeping rowClears as a sequence in case I want to award
--- more points for back to back clears, right now the scoring is more simple,
--- but you do get more points for more rows cleared at once.
+{- | This updates game points with respect to the current
+_rowClears value (thus should only be used ONCE per step)
+
+Note I'm keeping rowClears as a sequence in case I want to award
+more points for back to back clears, right now the scoring is more simple,
+but you do get more points for more rows cleared at once.
+-}
 updateScore :: Tetris ()
 updateScore = do
   multiplier <- (1 +) <$> use level
   clears <- latestOrZero <$> use rowClears
   let newPoints = multiplier * points clears
   score %= (+ newPoints)
-  where
-    -- Translate row clears to points
-    points 0 = 0
-    points 1 = 40
-    points 2 = 100
-    points 3 = 300
-    points _ = 800
-    -- | Get last value of sequence or 0 if empty
-    latestOrZero :: Seq.Seq Int -> Int
-    latestOrZero Empty     = 0
-    latestOrZero (_ :|> n) = n
+ where
+  -- Translate row clears to points
+  points 0 = 0
+  points 1 = 40
+  points 2 = 100
+  points 3 = 300
+  points _ = 800
+  -- \| Get last value of sequence or 0 if empty
+  latestOrZero :: Seq.Seq Int -> Int
+  latestOrZero Empty = 0
+  latestOrZero (_ :|> n) = n
 
 updatePerf :: Tetris ()
 updatePerf = do
@@ -277,11 +301,11 @@ updatePerf = do
 rotateBlock :: BlockRotation -> Board -> Block -> Maybe Block
 rotateBlock br brd blk = do
   foldr (<|>) Nothing $
-    mfilter (isValidBlockPosition brd) . pure . ($ blk) <$>
-      [ rotateBlockRaw br
-      , rotateBlockRaw br . translate Left
-      , rotateBlockRaw br . translate Right
-      ]
+    mfilter (isValidBlockPosition brd) . pure . ($ blk)
+      <$> [ rotateBlockRaw br
+          , rotateBlockRaw br . translate Left
+          , rotateBlockRaw br . translate Right
+          ]
 
 rotate :: BlockRotation -> Tetris ()
 rotate br = do
@@ -308,7 +332,7 @@ hardDroppedBlock = do
   let diffs =
         [ y - yo
         | (V2 xo yo) <- boardCoords
-        , (V2 x  y ) <- blockCoords
+        , (V2 x y) <- blockCoords
         , xo == x
         , yo < y
         ]
@@ -320,7 +344,7 @@ hardDroppedBlock = do
 freezeBlock :: Tetris ()
 freezeBlock = do
   blk <- use block
-  modifying board $ M.union $ M.fromList [ (c, _shape blk) | c <- coords blk ]
+  modifying board $ M.union $ M.fromList [(c, _shape blk) | c <- coords blk]
 
 initNextBlock :: Tetris ()
 initNextBlock = use nextShape >>= \s -> block .= initBlock s
@@ -354,7 +378,8 @@ isInBounds (V2 x y) = 1 <= x && x <= boardWidth && 1 <= y
 -- | Checks if block's potential new location is valid
 isValidBlockPosition :: Board -> Block -> Bool
 isValidBlockPosition brd = all validCoord . coords
-  where validCoord = (&&) <$> isFree brd <*> isInBounds
+ where
+  validCoord = (&&) <$> isFree brd <*> isInBounds
 
 -- General utilities
 
@@ -363,8 +388,8 @@ shuffle :: Seq.Seq a -> Tetris (Seq.Seq a)
 shuffle xs
   | null xs = pure mempty
   | otherwise = do
-    (cut, rnd') <- randomR (0, length xs - 1) <$> use rnd
-    rnd .= rnd'
-    case Seq.splitAt cut xs of
-      (left, y :<| ys) ->  fmap (y <|) (shuffle $ left >< ys)
-      _ -> error "impossible"
+      (cut, rnd') <- randomR (0, length xs - 1) <$> use rnd
+      rnd .= rnd'
+      case Seq.splitAt cut xs of
+        (left, y :<| ys) -> fmap (y <|) (shuffle $ left >< ys)
+        _ -> error "impossible"

@@ -9,27 +9,25 @@ import Data.Foldable (for_)
 import Data.Function (on)
 import Data.List (minimumBy)
 import Linear.V2 (V2 (..))
+import Tetris
 import Prelude hiding (Left, Right)
 
-import Tetris
-
 type Score = Int -- smallest best
+
 type BlockMove = (Int, BlockRotation, Block)
 
 horizontalNess :: Board -> Int
 horizontalNess b =
-  let
-    coords = [1 .. boardWidth] >>= (\x -> [1 .. boardHeight - 1] >>= (\y -> [V2 x y]))
-    up = translateBy (-1) Down
-    ups c = iterate up (up c)
-    upsTaken c = takeWhile (not . isFree b) (ups c)
-    score c@(V2 _ y) =
-      (y *) $
-        if isFree b c
-          then (4 *) . length . take 2 $ upsTaken c
-          else y
-   in
-    sum . map score $ coords
+  let coords = [1 .. boardWidth] >>= (\x -> [1 .. boardHeight - 1] >>= (\y -> [V2 x y]))
+      up = translateBy (-1) Down
+      ups c = iterate up (up c)
+      upsTaken c = takeWhile (not . isFree b) (ups c)
+      score c@(V2 _ y) =
+        (y *) $
+          if isFree b c
+            then (4 *) . length . take 2 $ upsTaken c
+            else y
+   in sum . map score $ coords
 
 validBlocks :: Board -> Block -> [BlockMove]
 validBlocks brd blk@(Block tetrimino _origin@(V2 x _) _) = do

@@ -7,5 +7,6 @@ mkShell {
   buildInputs = [
     haskell-language-server
     cabal-install
+    haskellPackages.fourmolu
   ];
 }

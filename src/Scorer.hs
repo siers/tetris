@@ -13,17 +13,17 @@ import Data.Function (on)
 import Data.List
 import qualified Data.Map as M
 import Data.Maybe
-import System.Environment (getEnvironment, withArgs)
-import System.Random
-import Prelude hiding (Left, Right)
 
 -- import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import qualified Solve as S
 import qualified Solve1 as S1
 import qualified Solve2 as S2
+import System.Environment (getEnvironment, withArgs)
+import System.Random
 import Tetris
 import qualified Tetris as T
+import Prelude hiding (Left, Right)
 
 type SolverScores = (Int, [(Int, Double)])
 
@@ -46,12 +46,10 @@ scoreSolver steps solver = do
   divToFloat = (/) `on` (fromIntegral :: Int -> Double)
   calcPerf :: Game -> (Int, Double)
   calcPerf game =
-    let
-      perf = game ^. T.perf
-      score = game ^. T.score
-      roundTo = (/ 100) . fromIntegral @Integer . round . (* 100)
-     in
-      (score, roundTo . negate . log $ perf `divToFloat` score)
+    let perf = game ^. T.perf
+        score = game ^. T.score
+        roundTo = (/ 100) . fromIntegral @Integer . round . (* 100)
+     in (score, roundTo . negate . log $ perf `divToFloat` score)
 
 solvers :: [(String, Maybe Int -> IO ())]
 solvers =
@@ -63,9 +61,8 @@ solvers =
 solveScores :: IO ()
 solveScores = do
   envs <- M.fromList <$> getEnvironment
-  let
-    iterations = read <$> M.lookup "iter" envs
-    criterion = M.lookup "criterion" envs
+  let iterations = read <$> M.lookup "iter" envs
+      criterion = M.lookup "criterion" envs
 
   case criterion of
     Just opts ->

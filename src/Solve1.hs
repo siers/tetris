@@ -13,9 +13,8 @@ import Data.Sequence (ViewL (..))
 import qualified Data.Sequence as Seq
 import Data.Traversable (for)
 import Linear.V2 (V2 (..))
-import Prelude hiding (Left, Right)
-
 import Tetris
+import Prelude hiding (Left, Right)
 
 -- smallest best
 type Score = (Int, Int, Int)
@@ -29,22 +28,18 @@ viewHeadL s = case Seq.viewl s of
 
 coveredBlocks :: Board -> Int
 coveredBlocks b =
-  let
-    coords = [1 .. boardWidth] >>= (\x -> [1 .. boardHeight - 1] >>= (\y -> [V2 x y]))
-    free = isFree b
-    ups c = iterate (translateBy (-1) Down) (translateBy (-1) Down c)
-    score c = fromEnum (free c) * (3 + length (takeWhile (not . free) (ups c)))
-   in
-    sum . map score $ coords
+  let coords = [1 .. boardWidth] >>= (\x -> [1 .. boardHeight - 1] >>= (\y -> [V2 x y]))
+      free = isFree b
+      ups c = iterate (translateBy (-1) Down) (translateBy (-1) Down c)
+      score c = fromEnum (free c) * (3 + length (takeWhile (not . free) (ups c)))
+   in sum . map score $ coords
 
 towerScore :: Board -> Int
 towerScore b =
-  let
-    ysDown = [boardHeight - 1, boardHeight - 2 .. 1]
-    tower x = (boardHeight -) . length $ takeWhile (isFree b . V2 x) ysDown
-    towers = map tower [1 .. boardWidth]
-   in
-    sum $ map (id >>= (*)) towers
+  let ysDown = [boardHeight - 1, boardHeight - 2 .. 1]
+      tower x = (boardHeight -) . length $ takeWhile (isFree b . V2 x) ysDown
+      towers = map tower [1 .. boardWidth]
+   in sum $ map (id >>= (*)) towers
 
 scoreBoard :: Tetris Score
 scoreBoard = do
@@ -70,7 +65,7 @@ scoreBlock bm = do
   freezeBlock
   scoreBoard
 
-pickMove :: MonadIO m => TetrisT m ()
+pickMove :: (MonadIO m) => TetrisT m ()
 pickMove = do
   brd <- use board
   blk <- use block

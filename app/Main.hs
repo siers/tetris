@@ -1,86 +1,104 @@
 module Main where
 
 import Control.Monad (when)
-import System.Exit (exitSuccess)
-import Text.Read (readMaybe)
-
 import Options.Applicative
-import qualified System.Directory as D
-import System.FilePath ((</>))
-
-import Tetris (Game(..))
 import Scorer
-import UI.PickLevel (pickLevel)
+import qualified System.Directory as D
+import System.Exit (exitSuccess)
+import System.FilePath ((</>))
+import Tetris (Game (..))
+import Text.Read (readMaybe)
 import UI.Game (playGame)
+import UI.PickLevel (pickLevel)
 
 data Opts = Opts
   { hardDrop :: HardDropOpt
-  , level    :: Maybe Int
-  , score    :: Bool
-  , solver   :: Bool
+  , level :: Maybe Int
+  , score :: Bool
+  , solver :: Bool
   }
 
 data HardDropOpt = None | AsciiOnly | CustomChars String
 
 opts :: Parser Opts
-opts = Opts
-  <$> hardDropOpt
-  <*> optional (option auto
-    (  long "level"
-    <> short 'l'
-    <> metavar "LEVEL"
-    <> help "Specify level (unspecified results in prompt)" ))
-  <*> switch
-    (  long "high-score"
-    <> help "Print high score and exit" )
-  <*> switch
-    (  long "solver"
-    <> help "Print solver scores and exit" )
+opts =
+  Opts
+    <$> hardDropOpt
+    <*> optional
+      ( option
+          auto
+          ( long "level"
+              <> short 'l'
+              <> metavar "LEVEL"
+              <> help "Specify level (unspecified results in prompt)"
+          )
+      )
+    <*> switch
+      ( long "high-score"
+          <> help "Print high score and exit"
+      )
+    <*> switch
+      ( long "solver"
+          <> help "Print solver scores and exit"
+      )
 
 hardDropOpt :: Parser HardDropOpt
 hardDropOpt = noneOpt <|> asciiOpt <|> custOpt
-  where
-    noneOpt = flag' None
-      (  long "no-preview"
-      <> short 'n'
-      <> help "Don't show preview cell" )
-    asciiOpt = flag' AsciiOnly
-      (  long "ascii-only"
-      <> short 'a'
-      <> help "Use '[]' as hard drop preview cell" )
-    custOpt = CustomChars <$> option twoChar
-      (  long "preview-chars"
-      <> short 'p'
-      <> metavar "CHARS"
-      <> value "◤◢"
-      <> showDefaultWith (const "◤◢")
-      <> help "Customize two character preview cell" )
+ where
+  noneOpt =
+    flag'
+      None
+      ( long "no-preview"
+          <> short 'n'
+          <> help "Don't show preview cell"
+      )
+  asciiOpt =
+    flag'
+      AsciiOnly
+      ( long "ascii-only"
+          <> short 'a'
+          <> help "Use '[]' as hard drop preview cell"
+      )
+  custOpt =
+    CustomChars
+      <$> option
+        twoChar
+        ( long "preview-chars"
+            <> short 'p'
+            <> metavar "CHARS"
+            <> value "◤◢"
+            <> showDefaultWith (const "◤◢")
+            <> help "Customize two character preview cell"
+        )
 
 fullopts :: ParserInfo Opts
-fullopts = info (helper <*> opts)
-  (  fullDesc
-  <> header "tetris - the iconic game right in your terminal" )
+fullopts =
+  info
+    (helper <*> opts)
+    ( fullDesc
+        <> header "tetris - the iconic game right in your terminal"
+    )
 
 twoChar :: ReadM String
 twoChar = do
   cs <- str
   if length cs /= 2
-     then readerError "Preview must be two characters long"
-     else return cs
+    then readerError "Preview must be two characters long"
+    else return cs
 
 hdOptStr :: HardDropOpt -> Maybe String
-hdOptStr None            = Nothing
-hdOptStr AsciiOnly       = Just "[]"
+hdOptStr None = Nothing
+hdOptStr AsciiOnly = Just "[]"
 hdOptStr (CustomChars s) = Just s
 
 main :: IO ()
 main = do
-  (Opts hd ml hs slvr) <- execParser fullopts      -- get CLI opts/args
+  (Opts hd ml hs slvr) <- execParser fullopts -- get CLI opts/args
   when hs (getHighScore >>= printM >> exitSuccess) -- show high score and exit
   when slvr (solveScores >> exitSuccess)
-  l <- maybe pickLevel return ml                   -- pick level prompt if necessary
-  g <- playGame l (hdOptStr hd)                    -- play game
-  handleEndGame (_score g)                         -- save & print score
+  l <- maybe pickLevel return ml -- pick level prompt if necessary
+  g <- playGame l (hdOptStr hd) -- play game
+  handleEndGame (_score g) -- save & print score
 
 handleEndGame :: Int -> IO ()
 handleEndGame s = do
@@ -88,14 +106,14 @@ handleEndGame s = do
   case mhs of
     Nothing -> newHighScore
     Just hs -> if s <= hs then justShowScore else newHighScore
-  where
-    justShowScore = putStrLn $ "Your final score: " ++ show s
-    newHighScore = do
-      putStrLn $ "Congrats! You just got the new highest score: " ++ show s
-      setHighScore s
+ where
+  justShowScore = putStrLn $ "Your final score: " ++ show s
+  newHighScore = do
+    putStrLn $ "Congrats! You just got the new highest score: " ++ show s
+    setHighScore s
 
-printM :: Show a => Maybe a -> IO ()
-printM Nothing  = putStrLn "None"
+printM :: (Show a) => Maybe a -> IO ()
+printM Nothing = putStrLn "None"
 printM (Just s) = print s
 
 getHighScore :: IO (Maybe Int)
@@ -103,8 +121,8 @@ getHighScore = do
   lb <- getLeaderboardFile
   exists <- D.doesFileExist lb
   if exists
-     then readMaybe <$> readFile lb
-     else return Nothing
+    then readMaybe <$> readFile lb
+    else return Nothing
 
 setHighScore :: Int -> IO ()
 setHighScore s = do

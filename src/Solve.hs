@@ -11,9 +11,8 @@ import Data.Function (on)
 import Data.List (minimumBy)
 import Data.Maybe
 import Linear.V2 (V2 (..))
-import Prelude hiding (Left, Right)
-
 import Tetris
+import Prelude hiding (Left, Right)
 
 type Score = Int -- smallest best
 
@@ -21,17 +20,15 @@ data BlockMove = BlockMove {bmShift :: Int, bmRot :: BlockRotation, bmBlock :: B
 
 horizontalNess :: Board -> Score
 horizontalNess b =
-  let
-    coords = V2 <$> [1 .. boardWidth] <*> [1 .. boardHeight - 1]
-    up = translateBy (-1) Down
-    badForFree c = map ($ c) [up, up . up, up . up . up, up . translate Left, up . translate Right]
-    score c@(V2 _ y) =
-      (y *) $
-        if isFree b c
-          then (4 *) . sum . map (fromEnum . not . isFree b) $ badForFree c
-          else y
-   in
-    sum . map score $ coords
+  let coords = V2 <$> [1 .. boardWidth] <*> [1 .. boardHeight - 1]
+      up = translateBy (-1) Down
+      badForFree c = map ($ c) [up, up . up, up . up . up, up . translate Left, up . translate Right]
+      score c@(V2 _ y) =
+        (y *) $
+          if isFree b c
+            then (4 *) . sum . map (fromEnum . not . isFree b) $ badForFree c
+            else y
+   in sum . map score $ coords
 
 validBlockMoves :: Board -> Block -> [BlockMove]
 validBlockMoves brd blk@(Block tetrimino _origin@(V2 x _) _) = do
