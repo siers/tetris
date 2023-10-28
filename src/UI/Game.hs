@@ -115,7 +115,9 @@ handleEvent (VtyEvent (V.EvKey V.KUp [])) = exec (rotate BrRot90)
 handleEvent (VtyEvent (V.EvKey (V.KChar 'k') [])) = exec (rotate BrRot90)
 handleEvent (VtyEvent (V.EvKey (V.KChar 'g') [])) = exec (rotate BrRot270)
 handleEvent (VtyEvent (V.EvKey (V.KChar ' ') [])) =
-  guarded (not . view paused) $ over game (execTetris hardDrop) . set locked True
+  guarded (not . view paused) $
+    -- over game (execTetris hardDrop) . set locked True -- with lock delay frame
+    over game (execTetris (hardDrop >> timeStep)) -- without lock delay frame
 handleEvent (VtyEvent (V.EvKey (V.KChar 'd') [])) = do
   -- suggest + hard Drop
   guarded' (not . view paused) $ (game .=) =<< execStateT suggest =<< gets (view game)

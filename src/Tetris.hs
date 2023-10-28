@@ -270,7 +270,7 @@ isGameOver :: Game -> Bool
 isGameOver g = blockStopped g && g ^. (block . origin) == startOrigin
 
 -- | The main game execution, this is executed at each discrete time step
-timeStep :: (MonadIO m) => TetrisT m ()
+timeStep :: Tetris ()
 timeStep = do
   gets blockStopped >>= \case
     False -> gravitate
@@ -358,6 +358,7 @@ isStopped brd = any stopped . coords
   stopped = (||) <$> atBottom <*> (`M.member` brd) . translate Down
   atBottom = (== 1) . view (c . L._y)
 
+-- | Includes an invocation of the timeStep to remove the locked frame for a faster game.
 hardDrop :: Tetris ()
 hardDrop = hardDroppedBlock >>= assign block
 
