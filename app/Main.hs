@@ -101,10 +101,11 @@ main = do
   when slvr (solveScores >> exitSuccess)
 
   newUI <-
-    pure . join $
-      createUI
-        <$> maybe pickLevel return ml -- pick level prompt if necessary
-        <*> pure (hdOptStr hd) -- hard drop preview flag
+    pure
+      . join
+      $ createUI
+      <$> maybe pickLevel return ml -- pick level prompt if necessary
+      <*> pure (hdOptStr hd) -- hard drop preview flag
   ui <- maybe newUI return =<< fromSaveGame
   ui' <- playGame ui -- play game
   when (uiIsGameOver ui') $ handleEndGame (_score (_game ui')) -- save & print score

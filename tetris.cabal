@@ -1,15 +1,17 @@
 name:                tetris
-version:             0.1.4.1
-homepage:            https://github.com/samtay/tetris#readme
+version:             0.1.4.2
+homepage:            https://github.com/siers/tetris#readme
 license:             BSD3
 license-file:        LICENSE
 author:              Sam Tay
 maintainer:          sam.chong.tay@pm.me
 copyright:           2022 Sam Tay
-category:            Web
+category:            Game
 build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
+description:
+  A tetris game with the brick library by samtay with a few fixes from siers.
 
 library
   hs-source-dirs:      src

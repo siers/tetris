@@ -20,7 +20,5 @@ let
         homepage = "https://github.com/samtay/tetris#readme";
         license = lib.licenses.bsd3;
       }) {};
-
-  # src = fetchgit { url = "https://github.com/siers/tetris"; hash = "sha256-N8PG/bIpF/rUaqzhqBKn/z2Fjk8SVcsEpSPacCSXSRI="; };
 in
   drv
