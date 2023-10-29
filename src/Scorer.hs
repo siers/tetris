@@ -17,12 +17,11 @@ import Data.Maybe
 -- import Control.Monad.IO.Class (MonadIO, liftIO)
 
 import qualified Solve as S
-import qualified Solve1 as S1
-import qualified Solve2 as S2
 import System.Environment (getEnvironment, withArgs)
 import System.Random
 import Tetris
 import qualified Tetris as T
+import Text.Read (readMaybe)
 import Prelude hiding (Left, Right)
 
 type SolverScores = (Int, [(Int, Double)])
@@ -53,15 +52,13 @@ scoreSolver steps solver = do
 
 solvers :: [(String, Maybe Int -> IO ())]
 solvers =
-  [ ("solver3", \n -> print . ("solver",) =<< scoreSolver n S.pickMove)
-  , ("solver2", \n -> print . ("solver2",) =<< scoreSolver n S2.pickMove)
-  , ("solver1", \n -> print . ("solver1",) =<< scoreSolver n S1.pickMove)
+  [ ("solver", \n -> print . ("solver",) =<< scoreSolver n S.pickMove)
   ]
 
 solveScores :: IO ()
 solveScores = do
   envs <- M.fromList <$> getEnvironment
-  let iterations = read <$> M.lookup "iter" envs
+  let iterations = (readMaybe =<< M.lookup "iterations" envs) `mplus` Just 100
       criterion = M.lookup "criterion" envs
 
   case criterion of
@@ -71,5 +68,4 @@ solveScores = do
           flip map solvers $ \(name, solver) ->
             bench name (whnfIO (solver iterations))
     Nothing -> do
-      -- forM_ solvers $ \(_, solver) -> solver iterations
-      void $ initGame 0 (Just (mkStdGen 0)) >>= solve (Just 1000000000) S.pickMove
+      forM_ solvers $ \(_, solver) -> solver iterations

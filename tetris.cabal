@@ -15,8 +15,6 @@ library
   hs-source-dirs:      src
   exposed-modules:     Tetris
                      , Solve
-                     , Solve2
-                     , Solve1
                      , Scorer
                      , UI.PickLevel
                      , UI.Game
