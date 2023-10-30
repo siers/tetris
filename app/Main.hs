@@ -3,7 +3,8 @@ module Main where
 import Control.Monad (join, mfilter, when)
 import Data.Aeson
 import Data.ByteString.Lazy.Char8 (pack, unpack)
-import Data.Foldable (traverse_)
+import Data.Foldable (find, traverse_)
+import Data.Maybe (isNothing)
 import Options.Applicative
 import Scorer
 import qualified System.Directory as D
@@ -127,7 +128,12 @@ handleEndGame s = do
     saveResource (show s) =<< getLeaderboardFile
 
 saveGame :: UI -> IO ()
-saveGame ui = (saveResource . unpack . encode $ ui) =<< getSaveGameFile
+saveGame ui@UI{_game = Game{_score = newScore}} = do
+  oldGame <- fromSaveGame
+  let higherScoreFound UI{_game = Game{_score = oldScore}} = oldScore > newScore
+  when (isNothing $ find higherScoreFound oldGame) $ do
+    let saver = saveResource . unpack . encode $ ui
+    saver =<< getSaveGameFile
 
 printM :: (Show a) => Maybe a -> IO ()
 printM = traverse_ print
